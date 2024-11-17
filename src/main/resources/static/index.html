@@ -1,42 +1,84 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebSocket Test</title>
+    <title>Chat Application</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.0/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
 </head>
 <body>
-<h1>WebSocket Test</h1>
-<input id="name" type="text" placeholder="Enter your name" />
-<button onclick="sendName()">Send</button>
-<div id="greetings"></div>
+<div id="userInputDiv">
+    <h1>Enter your name</h1>
+    <input type="text" id="userName" placeholder="Your name" />
+    <button onclick="setUserName()">Join Chat</button>
+</div>
+
+<div id="chatDiv" style="display: none;">
+    <h1>Chat Room</h1>
+    <div id="chat"></div>
+    <input type="text" id="message" placeholder="Message"/>
+    <button onclick="sendMessage()">Send</button>
+</div>
 
 <script>
     var stompClient = null;
+    var userName = '';
 
-    //pub.
+    function setUserName() {
+        userName = document.getElementById('userName').value;
+        if (!userName) {
+            alert("Please enter your name.");
+            return;
+        }
+        document.getElementById('userInputDiv').style.display = 'none';
+        document.getElementById('chatDiv').style.display = 'block';
+        connect();
+        loadMessages(); // 초기 메시지 로드
+    }
+
     function connect() {
-        var socket = new SockJS('/gs-guide-websocket');
+        var socket = new SockJS('/ws');
         stompClient = Stomp.over(socket);
         stompClient.connect({}, function (frame) {
             console.log('Connected: ' + frame);
-            stompClient.subscribe('/topic/greeting', function (greeting) {
-                showGreeting(JSON.parse(greeting.body).content);
+            stompClient.subscribe('/sub/chat/room1', function (message) {
+                showMessage(JSON.parse(message.body));
             });
         });
     }
 
-    function sendName() {
-        var name = document.getElementById('name').value;
-        stompClient.send("/app/hello", {}, JSON.stringify({'name': name}));
+    function loadMessages() {
+        fetch('/api/chat/messages') // 메시지 로드 API 호출
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Network response was not ok");
+                }
+                return response.json();
+            })
+            .then(messages => {
+                messages.forEach(showMessage); // 과거 메시지 표시
+            })
+            .catch(error => {
+                console.error("Error fetching messages:", error); // 에러 로그
+            });
     }
 
-    function showGreeting(message) {
-        var greetings = document.getElementById('greetings');
-        greetings.innerHTML += "<div>" + message + "</div>";
+    function sendMessage() {
+        var messageInput = document.getElementById('message');
+        var message = {
+            channelId: 'room1',
+            sender: userName,
+            content: messageInput.value,
+            timestamp: new Date().toLocaleTimeString() // 현지 시간으로 설정
+        };
+        stompClient.send("/pub/chat/message", {}, JSON.stringify(message));
+        messageInput.value = '';
     }
 
-    connect();
+    function showMessage(message) {
+        var chatDiv = document.getElementById('chat');
+        chatDiv.innerHTML += "<p><strong>" + message.sender + ":</strong> " + message.content +
+            " <span style='font-size:small; color:gray;'>(" + message.timestamp + ")</span></p>";
+    }
 </script>
 </body>
 </html>
